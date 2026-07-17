@@ -125,83 +125,84 @@ impl LayerSeeds {
     }
 }
 
-// ---- confuse/deconfuse a single chunk ----
-fn confuse_chunk(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds) {
+// ---- confuse/deconfuse a single chunk —— 可变深度 + 预分配复用 ----
+fn confuse_chunk_depth(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds, depth: usize) {
     let n = chunk.len();
-    for li in 0..NUM_LAYERS {
+    let layers = depth.clamp(1, NUM_LAYERS);
+    let mut perm = vec![0usize; n];
+    let mut tmp = vec![0u8; n];
+    let mut off1 = vec![0u8; n];
+    let mut off2 = vec![0u8; n];
+    for li in 0..layers {
         let mut rng = XorShift64::new(layer_seed(seed, li));
-        let perm: Vec<usize> = {
-            let mut p: Vec<usize> = (0..n).collect();
-            for i in (1..n).rev() {
-                let j = (rng.next() % (i as u64 + 1)) as usize;
-                p.swap(i, j);
-            }
-            p
-        };
+        for i in 0..n { perm[i] = i; }
+        for i in (1..n).rev() {
+            let j = (rng.next() % (i as u64 + 1)) as usize;
+            perm.swap(i, j);
+        }
         let mut rng1 = XorShift64::new(seeds.off1[li]);
         let mut rng2 = XorShift64::new(seeds.off2[li]);
-        let off1: Vec<u8> = (0..n).map(|_| rng1.next_u8()).collect();
-        let off2: Vec<u8> = (0..n).map(|_| rng2.next_u8()).collect();
-        let mut tmp = vec![0u8; n];
+        for i in 0..n { off1[i] = rng1.next_u8(); }
+        for i in 0..n { off2[i] = rng2.next_u8(); }
         for i in 0..n { tmp[i] = chunk[i] ^ off1[i]; }
-        for i in 0..n { chunk[perm[i]] = tmp[i]; }
-        for i in 0..n { chunk[i] ^= off2[i]; }
-        for i in 0..n { chunk[i] = SBOX[chunk[i] as usize]; }
+        // fused: permute + XOR-off2 + S-box in two passes
+        for i in 0..n {
+            chunk[perm[i]] = SBOX[(tmp[i] ^ off2[perm[i]]) as usize];
+        }
     }
 }
 
-fn deconfuse_chunk(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds) {
+fn deconfuse_chunk_depth(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds, depth: usize) {
     let n = chunk.len();
-    for li in (0..NUM_LAYERS).rev() {
-        for i in 0..n { chunk[i] = INV_SBOX[chunk[i] as usize]; }
+    let layers = depth.clamp(1, NUM_LAYERS);
+    let mut perm = vec![0usize; n];
+    let mut inv_perm = vec![0usize; n];
+    let mut tmp = vec![0u8; n];
+    let mut off1 = vec![0u8; n];
+    let mut off2 = vec![0u8; n];
+    for li in (0..layers).rev() {
+        // fused: INV_SBOX + generate off1/off2 in parallel
         let mut rng = XorShift64::new(layer_seed(seed, li));
-        let perm: Vec<usize> = {
-            let mut p: Vec<usize> = (0..n).collect();
-            for i in (1..n).rev() {
-                let j = (rng.next() % (i as u64 + 1)) as usize;
-                p.swap(i, j);
-            }
-            p
-        };
-        let inv_perm: Vec<usize> = {
-            let mut inv = vec![0usize; n];
-            for (i, &p) in perm.iter().enumerate() { inv[p] = i; }
-            inv
-        };
+        for i in 0..n { perm[i] = i; }
+        for i in (1..n).rev() {
+            let j = (rng.next() % (i as u64 + 1)) as usize;
+            perm.swap(i, j);
+        }
+        for i in 0..n { inv_perm[perm[i]] = i; }
         let mut rng1 = XorShift64::new(seeds.off1[li]);
         let mut rng2 = XorShift64::new(seeds.off2[li]);
-        let off1: Vec<u8> = (0..n).map(|_| rng1.next_u8()).collect();
-        let off2: Vec<u8> = (0..n).map(|_| rng2.next_u8()).collect();
-        let mut tmp = vec![0u8; n];
-        for i in 0..n { chunk[i] ^= off2[i]; }
-        for i in 0..n { tmp[inv_perm[i]] = chunk[i]; }
+        for i in 0..n { off1[i] = rng1.next_u8(); }
+        for i in 0..n { off2[i] = rng2.next_u8(); }
+        // fused: inv-S-box + xor-off2 + inv-permute + xor-off1
+        for i in 0..n {
+            let val = INV_SBOX[chunk[i] as usize] ^ off2[i];
+            tmp[inv_perm[i]] = val;
+        }
         for i in 0..n { chunk[i] = tmp[i] ^ off1[i]; }
     }
 }
 
 fn confuse_full(data: &mut [u8], seed: u64) {
     let seeds = LayerSeeds::new(seed);
-    confuse_chunk(data, seed, &seeds);
+    confuse_chunk_depth(data, seed, &seeds, NUM_LAYERS);
 }
 
 fn deconfuse_full(data: &mut [u8], seed: u64) {
     let seeds = LayerSeeds::new(seed);
-    deconfuse_chunk(data, seed, &seeds);
+    deconfuse_chunk_depth(data, seed, &seeds, NUM_LAYERS);
 }
 
 // ============================================================
 // 五短板补全模块
 // ============================================================
 
-mod dynamic_path;
-mod control_flow;
-mod crypto_binding;
-mod secure_cleanup;
+pub mod dynamic_path;
+pub mod control_flow;
+pub mod crypto_binding;
+pub mod secure_cleanup;
 
-use dynamic_path::DynamicPathSelector;
-use control_flow::{ControlFlowDispatcher, opaque_predicate_true};
 use crypto_binding::CryptoBinding;
-use secure_cleanup::{SecureBuffer, SecureData};
+use secure_cleanup::SecureBuffer;
 
 // ============================================================
 // WASM 公开 API (原有 — 完全不变)
@@ -215,6 +216,16 @@ pub fn lgv2_confuse(data: &[u8], seed: u64) -> Vec<u8> {
     result
 }
 
+/// lgv2_confuse_d: 可变深度的混淆 (depth: 1..=7, 默认 7)
+#[wasm_bindgen]
+pub fn lgv2_confuse_d(data: &[u8], seed: u64, depth: usize) -> Vec<u8> {
+    if data.is_empty() { return vec![]; }
+    let seeds = LayerSeeds::new(seed);
+    let mut result = data.to_vec();
+    confuse_chunk_depth(&mut result, seed, &seeds, depth);
+    result
+}
+
 #[wasm_bindgen]
 pub fn lgv2_deconfuse(data: &[u8], seed: u64) -> Vec<u8> {
     if data.is_empty() { return vec![]; }
@@ -223,32 +234,40 @@ pub fn lgv2_deconfuse(data: &[u8], seed: u64) -> Vec<u8> {
     result
 }
 
+/// lgv2_deconfuse_d: 可变深度的解混淆 (depth 必须与混淆时一致)
+#[wasm_bindgen]
+pub fn lgv2_deconfuse_d(data: &[u8], seed: u64, depth: usize) -> Vec<u8> {
+    if data.is_empty() { return vec![]; }
+    let seeds = LayerSeeds::new(seed);
+    let mut result = data.to_vec();
+    deconfuse_chunk_depth(&mut result, seed, &seeds, depth);
+    result
+}
+
 // ============================================================
 // WASM 公开 API (五短板增强版)
 // ============================================================
 
-/// 增强混淆: 固定路径 (SUB+Linear) + session 差异化 + 安全零化
-/// seed ^ session_key 派生会话特定种子，确保不同会话产生不同输出
+/// 增强混淆: session 差异化 + 安全零化 + 可变深度
+/// depth: 1..=7, 默认 7; 值越大混淆越强但越慢
 #[wasm_bindgen]
-pub fn lgv2_confuse_ex(data: &[u8], seed: u64, session_key: u64) -> Vec<u8> {
+pub fn lgv2_confuse_ex(data: &[u8], seed: u64, session_key: u64, depth: usize) -> Vec<u8> {
     if data.is_empty() { return vec![]; }
     let mut buf = SecureBuffer::from_slice(data);
-    // 固定路径: seed ^ session_key 确保不同会话输出不同且 roundtrip 正确
     let combined_seed = seed.wrapping_add(session_key);
-    confuse_chunk(buf.get_mut(), combined_seed, &LayerSeeds::new(combined_seed));
+    confuse_chunk_depth(buf.get_mut(), combined_seed, &LayerSeeds::new(combined_seed), depth);
     let result = buf.get().to_vec();
-    buf.zeroize(); // 安全零化
+    buf.zeroize();
     result
 }
 
-/// 增强解混淆: 固定路径 + session 差异化
-/// session_key 必须与混淆时一致 (same combined_seed = seed ^ session_key)
+/// 增强解混淆: session 差异化 + 可变深度 (depth 必须与混淆时一致)
 #[wasm_bindgen]
-pub fn lgv2_deconfuse_ex(data: &[u8], seed: u64, session_key: u64) -> Vec<u8> {
+pub fn lgv2_deconfuse_ex(data: &[u8], seed: u64, session_key: u64, depth: usize) -> Vec<u8> {
     if data.is_empty() { return vec![]; }
     let mut buf = SecureBuffer::from_slice(data);
     let combined_seed = seed.wrapping_add(session_key);
-    deconfuse_chunk(buf.get_mut(), combined_seed, &LayerSeeds::new(combined_seed));
+    deconfuse_chunk_depth(buf.get_mut(), combined_seed, &LayerSeeds::new(combined_seed), depth);
     let result = buf.get().to_vec();
     buf.zeroize();
     result
@@ -276,31 +295,42 @@ pub fn lgv2_unbind_kem(data: &[u8], kem_ss: &[u8]) -> Vec<u8> {
     binding.unbind(data)
 }
 
-/// 端到端安全混淆: 动态路径 + ML-KEM 绑定
-/// combines confuse_ex + bind_kem in one call
+/// 端到端安全混淆: 混乱 + ML-KEM 绑定 + 可变深度
 #[wasm_bindgen]
-pub fn lgv2_confuse_full(data: &[u8], seed: u64, session_key: u64, kem_ss: &[u8]) -> Vec<u8> {
-    if data.is_empty() { return vec![]; }
-    // Step 1: 动态路径混淆
-    let confused = lgv2_confuse_ex(data, seed, session_key);
-    // Step 2: ML-KEM 绑定
-    lgv2_bind_kem(&confused, kem_ss)
+pub fn lgv2_confuse_full(data: &[u8], seed: u64, session_key: u64, kem_ss: &[u8], depth: usize) -> Vec<u8> {
+    if data.is_empty() || kem_ss.len() != 32 { return vec![]; }
+    let mut buf = SecureBuffer::from_slice(data);
+    let combined_seed = seed.wrapping_add(session_key);
+    confuse_chunk_depth(buf.get_mut(), combined_seed, &LayerSeeds::new(combined_seed), depth);
+    let mut ss = [0u8; 32];
+    ss.copy_from_slice(&kem_ss[..32]);
+    let binding = CryptoBinding::new(&ss);
+    let result = binding.bind(buf.get());
+    buf.zeroize();
+    result
 }
 
-/// 端到端安全解绑: ML-KEM 解绑 + 动态路径解混淆
+/// 端到端安全解绑: ML-KEM 解绑 + 解混淆 + 可变深度
 #[wasm_bindgen]
-pub fn lgv2_deconfuse_full(data: &[u8], seed: u64, session_key: u64, kem_ss: &[u8]) -> Vec<u8> {
-    if data.is_empty() { return vec![]; }
-    // Step 1: ML-KEM 解绑
-    let unbound = lgv2_unbind_kem(data, kem_ss);
-    // Step 2: 动态路径解混淆
-    lgv2_deconfuse_ex(&unbound, seed, session_key)
+pub fn lgv2_deconfuse_full(data: &[u8], seed: u64, session_key: u64, kem_ss: &[u8], depth: usize) -> Vec<u8> {
+    if data.is_empty() || kem_ss.len() != 32 { return vec![]; }
+    let mut ss = [0u8; 32];
+    ss.copy_from_slice(&kem_ss[..32]);
+    let binding = CryptoBinding::new(&ss);
+    let unbound = binding.unbind(data);
+    if unbound.is_empty() { return vec![]; }
+    let mut buf = SecureBuffer::from_slice(&unbound);
+    let combined_seed = seed.wrapping_add(session_key);
+    deconfuse_chunk_depth(buf.get_mut(), combined_seed, &LayerSeeds::new(combined_seed), depth);
+    let result = buf.get().to_vec();
+    buf.zeroize();
+    result
 }
 
 /// 获取库版本信息
 #[wasm_bindgen]
 pub fn lgv2_version() -> String {
-    "LG v2.2.1 (五短板增强版)".to_string()
+    "LG v2.2.2 (可变深度 + fused pass)".to_string()
 }
 
 // ============================================================
@@ -381,21 +411,49 @@ mod tests {
         assert_eq!(confused.len(), 0);
     }
 
+    // ---- 可变深度测试 ----
+
+    #[test]
+    fn test_depth_roundtrip() {
+        let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
+        for d in 1..=NUM_LAYERS {
+            let confused = lgv2_confuse_d(&data, 0x1234, d);
+            let restored = lgv2_deconfuse_d(&confused, 0x1234, d);
+            assert_eq!(data, restored, "depth={} roundtrip failed", d);
+        }
+    }
+
+    #[test]
+    fn test_depth_7_equals_default() {
+        let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
+        let c7 = lgv2_confuse_d(&data, 0x1234, 7);
+        let cdef = lgv2_confuse(&data, 0x1234);
+        assert_eq!(c7, cdef, "depth=7 must equal default");
+    }
+
+    #[test]
+    fn test_different_depths_differ() {
+        let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
+        let c1 = lgv2_confuse_d(&data, 0x1234, 3);
+        let c2 = lgv2_confuse_d(&data, 0x1234, 5);
+        assert_ne!(c1, c2, "different depths must produce different output");
+    }
+
     // ---- 五短板增强测试 ----
 
     #[test]
     fn test_confuse_ex_roundtrip() {
         let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
-        let confused = lgv2_confuse_ex(&data, 0x1234, 0xDEAD);
-        let restored = lgv2_deconfuse_ex(&confused, 0x1234, 0xDEAD);
+        let confused = lgv2_confuse_ex(&data, 0x1234, 0xDEAD, 7);
+        let restored = lgv2_deconfuse_ex(&confused, 0x1234, 0xDEAD, 7);
         assert_eq!(data, restored, "confuse_ex roundtrip must recover");
     }
 
     #[test]
     fn test_confuse_ex_different_session_differs() {
         let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
-        let c1 = lgv2_confuse_ex(&data, 0x1234, 0x1111);
-        let c2 = lgv2_confuse_ex(&data, 0x1234, 0x2222);
+        let c1 = lgv2_confuse_ex(&data, 0x1234, 0x1111, 7);
+        let c2 = lgv2_confuse_ex(&data, 0x1234, 0x2222, 7);
         assert_ne!(c1, c2, "different session keys must produce different output");
     }
 
@@ -412,8 +470,8 @@ mod tests {
     fn test_full_confuse_deconfuse() {
         let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
         let ss: Vec<u8> = (0..32).map(|i| 0x42u8).collect();
-        let confused = lgv2_confuse_full(&data, 0x1234, 0xDEAD, &ss);
-        let restored = lgv2_deconfuse_full(&confused, 0x1234, 0xDEAD, &ss);
+        let confused = lgv2_confuse_full(&data, 0x1234, 0xDEAD, &ss, 7);
+        let restored = lgv2_deconfuse_full(&confused, 0x1234, 0xDEAD, &ss, 7);
         assert_eq!(data, restored, "full confuse/deconfuse must recover");
     }
 
@@ -422,7 +480,7 @@ mod tests {
         let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
         let ss: Vec<u8> = vec![0x42u8; 32];
         let plain_confused = lgv2_confuse(&data, 0x1234);
-        let full_confused = lgv2_confuse_full(&data, 0x1234, 0xDEAD, &ss);
+        let full_confused = lgv2_confuse_full(&data, 0x1234, 0xDEAD, &ss, 7);
         assert_ne!(plain_confused, full_confused, "full confuse must differ from plain confuse");
     }
 }

@@ -1,8 +1,8 @@
 {
   "name": "lgv2",
   "type": "module",
-  "description": "LG v2.1/v2.2 混淆引擎 + 五短板补全",
-  "version": "2.2.1",
+  "description": "LG v2.2.2 confusion engine — variable depth + fused pass + session binding",
+  "version": "2.2.2",
   "files": [
     "lgv2_bg.wasm",
     "lgv2.js",

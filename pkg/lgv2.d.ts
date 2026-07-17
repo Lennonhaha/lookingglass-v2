@@ -11,29 +11,37 @@ export function lgv2_bind_kem(data: Uint8Array, kem_ss: Uint8Array): Uint8Array;
 export function lgv2_confuse(data: Uint8Array, seed: bigint): Uint8Array;
 
 /**
- * 增强混淆: 固定路径 (SUB+Linear) + session 差异化 + 安全零化
- * seed ^ session_key 派生会话特定种子，确保不同会话产生不同输出
+ * lgv2_confuse_d: 可变深度的混淆 (depth: 1..=7, 默认 7)
  */
-export function lgv2_confuse_ex(data: Uint8Array, seed: bigint, session_key: bigint): Uint8Array;
+export function lgv2_confuse_d(data: Uint8Array, seed: bigint, depth: number): Uint8Array;
 
 /**
- * 端到端安全混淆: 动态路径 + ML-KEM 绑定
- * combines confuse_ex + bind_kem in one call
+ * 增强混淆: session 差异化 + 安全零化 + 可变深度
+ * depth: 1..=7, 默认 7; 值越大混淆越强但越慢
  */
-export function lgv2_confuse_full(data: Uint8Array, seed: bigint, session_key: bigint, kem_ss: Uint8Array): Uint8Array;
+export function lgv2_confuse_ex(data: Uint8Array, seed: bigint, session_key: bigint, depth: number): Uint8Array;
+
+/**
+ * 端到端安全混淆: 混乱 + ML-KEM 绑定 + 可变深度
+ */
+export function lgv2_confuse_full(data: Uint8Array, seed: bigint, session_key: bigint, kem_ss: Uint8Array, depth: number): Uint8Array;
 
 export function lgv2_deconfuse(data: Uint8Array, seed: bigint): Uint8Array;
 
 /**
- * 增强解混淆: 固定路径 + session 差异化
- * session_key 必须与混淆时一致 (same combined_seed = seed ^ session_key)
+ * lgv2_deconfuse_d: 可变深度的解混淆 (depth 必须与混淆时一致)
  */
-export function lgv2_deconfuse_ex(data: Uint8Array, seed: bigint, session_key: bigint): Uint8Array;
+export function lgv2_deconfuse_d(data: Uint8Array, seed: bigint, depth: number): Uint8Array;
 
 /**
- * 端到端安全解绑: ML-KEM 解绑 + 动态路径解混淆
+ * 增强解混淆: session 差异化 + 可变深度 (depth 必须与混淆时一致)
  */
-export function lgv2_deconfuse_full(data: Uint8Array, seed: bigint, session_key: bigint, kem_ss: Uint8Array): Uint8Array;
+export function lgv2_deconfuse_ex(data: Uint8Array, seed: bigint, session_key: bigint, depth: number): Uint8Array;
+
+/**
+ * 端到端安全解绑: ML-KEM 解绑 + 解混淆 + 可变深度
+ */
+export function lgv2_deconfuse_full(data: Uint8Array, seed: bigint, session_key: bigint, kem_ss: Uint8Array, depth: number): Uint8Array;
 
 /**
  * 密码学解绑: 使用相同 ML-KEM 共享密钥解除绑定
@@ -51,11 +59,13 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly lgv2_bind_kem: (a: number, b: number, c: number, d: number) => [number, number];
     readonly lgv2_confuse: (a: number, b: number, c: bigint) => [number, number];
-    readonly lgv2_confuse_ex: (a: number, b: number, c: bigint, d: bigint) => [number, number];
-    readonly lgv2_confuse_full: (a: number, b: number, c: bigint, d: bigint, e: number, f: number) => [number, number];
+    readonly lgv2_confuse_d: (a: number, b: number, c: bigint, d: number) => [number, number];
+    readonly lgv2_confuse_ex: (a: number, b: number, c: bigint, d: bigint, e: number) => [number, number];
+    readonly lgv2_confuse_full: (a: number, b: number, c: bigint, d: bigint, e: number, f: number, g: number) => [number, number];
     readonly lgv2_deconfuse: (a: number, b: number, c: bigint) => [number, number];
-    readonly lgv2_deconfuse_ex: (a: number, b: number, c: bigint, d: bigint) => [number, number];
-    readonly lgv2_deconfuse_full: (a: number, b: number, c: bigint, d: bigint, e: number, f: number) => [number, number];
+    readonly lgv2_deconfuse_d: (a: number, b: number, c: bigint, d: number) => [number, number];
+    readonly lgv2_deconfuse_ex: (a: number, b: number, c: bigint, d: bigint, e: number) => [number, number];
+    readonly lgv2_deconfuse_full: (a: number, b: number, c: bigint, d: bigint, e: number, f: number, g: number) => [number, number];
     readonly lgv2_version: () => [number, number];
     readonly lgv2_unbind_kem: (a: number, b: number, c: number, d: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

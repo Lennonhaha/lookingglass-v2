@@ -87,7 +87,7 @@ impl Drop for SecureBuffer {
 /// 零化后保持有效指针的 RAII 封装
 pub struct SecureData {
     data: Vec<u8>,
-    is_cleaned: bool,
+    pub is_cleaned: bool,
 }
 
 impl SecureData {

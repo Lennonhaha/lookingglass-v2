@@ -9,3 +9,18 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# debug artifacts (v2.2.2 RC)
+check_*.py
+debug*.py
+trace_*.py
+fix_*.py
+seed_debug*.py
+verify_bug.py
+find_test.py
+ssh_proxy.js
+tests/
+compute_seed.rs
+debug_test.rs
+test_mul.rs
+test_rs.rs

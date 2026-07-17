@@ -34,37 +34,54 @@ export function lgv2_confuse(data, seed) {
 }
 
 /**
- * 增强混淆: 固定路径 (SUB+Linear) + session 差异化 + 安全零化
- * seed ^ session_key 派生会话特定种子，确保不同会话产生不同输出
+ * lgv2_confuse_d: 可变深度的混淆 (depth: 1..=7, 默认 7)
  * @param {Uint8Array} data
  * @param {bigint} seed
- * @param {bigint} session_key
+ * @param {number} depth
  * @returns {Uint8Array}
  */
-export function lgv2_confuse_ex(data, seed, session_key) {
+export function lgv2_confuse_d(data, seed, depth) {
     const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.lgv2_confuse_ex(ptr0, len0, seed, session_key);
+    const ret = wasm.lgv2_confuse_d(ptr0, len0, seed, depth);
     var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v2;
 }
 
 /**
- * 端到端安全混淆: 动态路径 + ML-KEM 绑定
- * combines confuse_ex + bind_kem in one call
+ * 增强混淆: session 差异化 + 安全零化 + 可变深度
+ * depth: 1..=7, 默认 7; 值越大混淆越强但越慢
+ * @param {Uint8Array} data
+ * @param {bigint} seed
+ * @param {bigint} session_key
+ * @param {number} depth
+ * @returns {Uint8Array}
+ */
+export function lgv2_confuse_ex(data, seed, session_key, depth) {
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.lgv2_confuse_ex(ptr0, len0, seed, session_key, depth);
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * 端到端安全混淆: 混乱 + ML-KEM 绑定 + 可变深度
  * @param {Uint8Array} data
  * @param {bigint} seed
  * @param {bigint} session_key
  * @param {Uint8Array} kem_ss
+ * @param {number} depth
  * @returns {Uint8Array}
  */
-export function lgv2_confuse_full(data, seed, session_key, kem_ss) {
+export function lgv2_confuse_full(data, seed, session_key, kem_ss, depth) {
     const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArray8ToWasm0(kem_ss, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.lgv2_confuse_full(ptr0, len0, seed, session_key, ptr1, len1);
+    const ret = wasm.lgv2_confuse_full(ptr0, len0, seed, session_key, ptr1, len1, depth);
     var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v3;
@@ -85,36 +102,53 @@ export function lgv2_deconfuse(data, seed) {
 }
 
 /**
- * 增强解混淆: 固定路径 + session 差异化
- * session_key 必须与混淆时一致 (same combined_seed = seed ^ session_key)
+ * lgv2_deconfuse_d: 可变深度的解混淆 (depth 必须与混淆时一致)
  * @param {Uint8Array} data
  * @param {bigint} seed
- * @param {bigint} session_key
+ * @param {number} depth
  * @returns {Uint8Array}
  */
-export function lgv2_deconfuse_ex(data, seed, session_key) {
+export function lgv2_deconfuse_d(data, seed, depth) {
     const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.lgv2_deconfuse_ex(ptr0, len0, seed, session_key);
+    const ret = wasm.lgv2_deconfuse_d(ptr0, len0, seed, depth);
     var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v2;
 }
 
 /**
- * 端到端安全解绑: ML-KEM 解绑 + 动态路径解混淆
+ * 增强解混淆: session 差异化 + 可变深度 (depth 必须与混淆时一致)
+ * @param {Uint8Array} data
+ * @param {bigint} seed
+ * @param {bigint} session_key
+ * @param {number} depth
+ * @returns {Uint8Array}
+ */
+export function lgv2_deconfuse_ex(data, seed, session_key, depth) {
+    const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.lgv2_deconfuse_ex(ptr0, len0, seed, session_key, depth);
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * 端到端安全解绑: ML-KEM 解绑 + 解混淆 + 可变深度
  * @param {Uint8Array} data
  * @param {bigint} seed
  * @param {bigint} session_key
  * @param {Uint8Array} kem_ss
+ * @param {number} depth
  * @returns {Uint8Array}
  */
-export function lgv2_deconfuse_full(data, seed, session_key, kem_ss) {
+export function lgv2_deconfuse_full(data, seed, session_key, kem_ss, depth) {
     const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passArray8ToWasm0(kem_ss, wasm.__wbindgen_malloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.lgv2_deconfuse_full(ptr0, len0, seed, session_key, ptr1, len1);
+    const ret = wasm.lgv2_deconfuse_full(ptr0, len0, seed, session_key, ptr1, len1, depth);
     var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v3;
