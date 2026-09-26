@@ -1,8 +1,8 @@
-[package]
+﻿[package]
 name = "lgv2"
 version = "2.2.2"
 edition = "2021"
-description = "LG v2.2.2 confusion engine — variable depth + fused pass + session binding"
+description = "LG v2.2.2 confusion engine 鈥?variable depth + fused pass + session binding"
 
 [lib]
 path = "src/lib.rs"
@@ -16,3 +16,4 @@ getrandom = { version = "0.2", features = ["js"] }
 opt-level = 3
 lto = true
 codegen-units = 1
+

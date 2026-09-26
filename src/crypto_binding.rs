@@ -39,24 +39,34 @@ impl Keccak256 {
         }
     }
 
-    pub fn finalize(self) -> [u8; 32] {
+    pub fn finalize(&mut self) -> [u8; 32] {
+        // SHA-3 padding (FIPS 202): absorb 0x06 → 0* → absorb 0x80
+        self.state[self.idx / 8] ^= (0x06u64) << (8 * (self.idx % 8));
+        // Set 0x80 at the last byte of the 136-byte rate
+        let last_byte = self.rate_bytes - 1;
+        self.state[last_byte / 8] ^= (0x80u64) << (8 * (last_byte % 8));
+        // Keccak-f[1600] 全 24 轮
+        for r in 0..24 {
+            self.theta();
+            self.rho_pi();
+            self.chi();
+            self.iota(r);
+        }
         let mut h = [0u8; 32];
-        // Keccak 吸收完成后的 squeeze
-        let mut s = self.state;
         for (i, chunk) in h.chunks_mut(8).enumerate() {
-            let word = s[i];
+            let word = self.state[i];
             chunk.copy_from_slice(&word.to_le_bytes());
         }
         h
     }
 
     fn squeeze(&mut self) {
-        // 简化的 Keccak-f[1600] 轮函数 (只做 12 轮近似)
-        for _ in 0..12 {
+        // Keccak-f[1600] 全 24 轮
+        for r in 0..24 {
             self.theta();
             self.rho_pi();
             self.chi();
-            self.iota(0);
+            self.iota(r);
         }
     }
 
@@ -75,23 +85,28 @@ impl Keccak256 {
     }
 
     fn rho_pi(&mut self) {
-        let mut b = [0u64; 25];
-        let mut x = 1;
-        let mut y = 0;
-        let mut current = self.state[0];
-        for t in 0..24 {
-            b[y*(5)+((2*x+3*y)%5)] = current.rotate_left((t*(t+1)/2) as u32);
-            let new_x = y;
-            y = (2*x+3*y) % 5;
-            x = new_x;
-            current = b[y*(5)+((2*x+3*y)%5)];
-            current = self.state[x+5*y];
+        // Rotation offsets for Keccak-f[1600] (FIPS 202 §3.2.3)
+        const R: [[u32; 5]; 5] = [
+            [0, 36, 3, 41, 18],
+            [1, 44, 10, 45, 2],
+            [62, 6, 43, 15, 61],
+            [28, 55, 25, 21, 56],
+            [27, 20, 39, 8, 14],
+        ];
+        let b = self.state; // copy (array is Copy)
+        for x in 0..5 {
+            for y in 0..5 {
+                // π: (x,y) → (y, (2x+3y) mod 5)
+                //   new x' = y, new y' = (2x+3y)%5
+                //   state index = y' * 5 + x' = ((2x+3y)%5) * 5 + y
+                let new_y = ((2 * x + 3 * y) % 5) as usize;
+                self.state[new_y * 5 + y] = b[y * 5 + x].rotate_left(R[x][y]);
+            }
         }
-        self.state = b;
     }
 
     fn chi(&mut self) {
-        let mut b = self.state;
+        let b = self.state;
         for y in 0..5 {
             for x in 0..5 {
                 self.state[y*5+x] = b[y*5+x] ^ ((b[y*5+((x+1)%5)] ^ 0xFFFFFFFFFFFFFFFF) & b[y*5+((x+2)%5)]);
@@ -99,8 +114,8 @@ impl Keccak256 {
         }
     }
 
-    fn iota(&mut self, rnds: usize) {
-        self.state[0] ^= Keccak256::RC[rnds % Keccak256::RC.len()];
+    fn iota(&mut self, round: usize) {
+        self.state[0] ^= Keccak256::RC[round % Keccak256::RC.len()];
     }
 }
 
@@ -111,7 +126,7 @@ impl Keccak256 {
         0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
         0x000000008000808b, 0x800000000000008b, 0x8000000000008089, 0x8000000000008003,
         0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
-        0x8000000080008081, 0x8000000000008080, 0x0000000000008001, 0x8000000080008008,
+        0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
     ];
 }
 
@@ -125,17 +140,26 @@ pub struct CryptoBinding {
 }
 
 impl CryptoBinding {
-    /// 从 ML-KEM 共享密钥初始化绑定器
-    /// binding_key = MLKEM_SS XOR 域分离标签
-    /// 简单、确定、无 Keccak 依赖。
+    /// 从 ML-KEM 共享密钥 + 域分离标签派生绑定密钥
+    /// binding_key = Keccak-256(domain_label || kem_shared_secret)
+    /// Keccak 单向性确保即使绑定结果泄露也无法逆向出 SS
     pub fn new(kem_shared_secret: &[u8; 32]) -> Self {
-        let mut binding_key = [0u8; 32];
-        let label = b"LGv2-CryptoBinding-v1";
-        for i in 0..32 {
-            // 循环标签以覆盖 32 字节
-            binding_key[i] = kem_shared_secret[i] ^ label[i % label.len()];
-        }
+        let binding_key = Self::derive_key(b"LGv2-CryptoBinding-v1", kem_shared_secret);
         Self { binding_key }
+    }
+
+    /// 用域分离标签派生绑定密钥
+    /// 允许同一 SS 在不同上下文派生不同密钥
+    pub fn with_domain(kem_shared_secret: &[u8; 32], domain: &[u8]) -> Self {
+        let binding_key = Self::derive_key(domain, kem_shared_secret);
+        Self { binding_key }
+    }
+
+    fn derive_key(domain: &[u8], secret: &[u8; 32]) -> [u8; 32] {
+        let mut hasher = Keccak256::new();
+        hasher.update(domain);
+        hasher.update(secret);
+        hasher.finalize()
     }
 
     /// 绑定: 将混淆输出与 binding_key 混合
@@ -224,5 +248,54 @@ mod tests {
         let r2 = h2.finalize();
         
         assert_ne!(r1, r2, "different input must produce different hash");
+    }
+
+    // ============================================================
+    // NIST SHA-3-256 Known Answer Tests (FIPS 202)
+    // ============================================================
+
+    // SHA3-256("") = a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a
+    #[test]
+    fn test_sha3_256_empty() {
+        let mut hasher = Keccak256::new();
+        let result = hasher.finalize();
+        let expected: [u8; 32] = [
+            0xa7, 0xff, 0xc6, 0xf8, 0xbf, 0x1e, 0xd7, 0x66,
+            0x51, 0xc1, 0x47, 0x56, 0xa0, 0x61, 0xd6, 0x62,
+            0xf5, 0x80, 0xff, 0x4d, 0xe4, 0x3b, 0x49, 0xfa,
+            0x82, 0xd8, 0x0a, 0x4b, 0x80, 0xf8, 0x43, 0x4a,
+        ];
+        assert_eq!(result, expected, "SHA3-256(\"\") mismatch");
+    }
+
+    // SHA3-256("abc"): 3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532
+    #[test]
+    fn test_sha3_256_abc() {
+        let mut hasher = Keccak256::new();
+        hasher.update(b"abc");
+        let result = hasher.finalize();
+        let expected: [u8; 32] = [
+            0x3a, 0x98, 0x5d, 0xa7, 0x4f, 0xe2, 0x25, 0xb2,
+            0x04, 0x5c, 0x17, 0x2d, 0x6b, 0xd3, 0x90, 0xbd,
+            0x85, 0x5f, 0x08, 0x6e, 0x3e, 0x9d, 0x52, 0x5b,
+            0x46, 0xbf, 0xe2, 0x45, 0x11, 0x43, 0x15, 0x32,
+        ];
+        assert_eq!(result, expected, "SHA3-256(\"abc\") mismatch");
+    }
+
+    // SHA3-256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+    // = 41c0dba2a9d6240849100376a8235e2c82e1b9998a999e21db32dd97496d3376
+    #[test]
+    fn test_sha3_256_long() {
+        let mut hasher = Keccak256::new();
+        hasher.update(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
+        let result = hasher.finalize();
+        let expected: [u8; 32] = [
+            0x41, 0xc0, 0xdb, 0xa2, 0xa9, 0xd6, 0x24, 0x08,
+            0x49, 0x10, 0x03, 0x76, 0xa8, 0x23, 0x5e, 0x2c,
+            0x82, 0xe1, 0xb9, 0x99, 0x8a, 0x99, 0x9e, 0x21,
+            0xdb, 0x32, 0xdd, 0x97, 0x49, 0x6d, 0x33, 0x76,
+        ];
+        assert_eq!(result, expected, "SHA3-256(long) mismatch");
     }
 }
