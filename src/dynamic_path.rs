@@ -1,12 +1,14 @@
 use crate::{XorShift64, layer_seed, SBOX, INV_SBOX, LayerSeeds, NUM_LAYERS};
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub enum PathMode {
     Standard,
     Substitute,
 }
 
 impl PathMode {
+    #[allow(dead_code)]
     fn from_bit(bit: u8) -> Self {
         if (bit & 1) == 0 {
             PathMode::Standard
@@ -16,10 +18,12 @@ impl PathMode {
     }
 }
 
+#[allow(dead_code)]
 pub struct DynamicPathSelector {
     session_seed: u64,
 }
 
+#[allow(dead_code)]
 impl DynamicPathSelector {
     pub fn new(session_key: u64) -> Self {
         Self {
@@ -163,7 +167,7 @@ mod tests {
         }
         let inv_perm: Vec<usize> = { let mut ip = vec![0usize; n]; for (i, &p) in perm.iter().enumerate() { ip[p] = i; } ip };
         let mut chunk: Vec<u8> = (0..16u8).collect();
-        let mut tmp: Vec<u8> = chunk.iter().enumerate().map(|(i, &x)| x ^ off1[i]).collect();
+        let tmp: Vec<u8> = chunk.iter().enumerate().map(|(i, &x)| x ^ off1[i]).collect();
         let mut tmp2 = vec![0u8; n];
         for i in 0..n { tmp2[perm[i]] = tmp[i]; }
         for i in 0..n { chunk[i] = tmp2[i] ^ off2[i]; }

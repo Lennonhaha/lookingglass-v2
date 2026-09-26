@@ -469,7 +469,7 @@ mod tests {
     #[test]
     fn test_full_confuse_deconfuse() {
         let data: Vec<u8> = (0..100).map(|i| i as u8).collect();
-        let ss: Vec<u8> = (0..32).map(|i| 0x42u8).collect();
+        let ss: Vec<u8> = (0..32).map(|_i| 0x42u8).collect();
         let confused = lgv2_confuse_full(&data, 0x1234, 0xDEAD, &ss, 7);
         let restored = lgv2_deconfuse_full(&confused, 0x1234, 0xDEAD, &ss, 7);
         assert_eq!(data, restored, "full confuse/deconfuse must recover");

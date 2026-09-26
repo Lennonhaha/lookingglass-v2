@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_drop_zeroizes() {
         let original = vec![0x42u8; 16];
-        let mut dropped = false;
+        let _dropped = false;
         
         {
             let buf = SecureBuffer::from_slice(&original);
