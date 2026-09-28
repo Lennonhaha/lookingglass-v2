@@ -1,8 +1,8 @@
 ﻿[package]
 name = "lgv2"
-version = "2.2.2"
+version = "2.4.0"
 edition = "2021"
-description = "LG v2.2.2 confusion engine 鈥?variable depth + fused pass + session binding"
+description = "LG v2.4.0 confusion engine — variable depth + fused pass + session binding"
 
 [lib]
 path = "src/lib.rs"
