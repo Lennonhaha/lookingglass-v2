@@ -1,0 +1,7 @@
+# Pin the Rust toolchain: CI (ubuntu-latest) bundles a drifting Rust
+# (1.98.0 on 2026-09-28 -> 1.99.0 on 2026-10-15), which changes clippy's lint set.
+# Pinned to the version this repo is verified against, so `cargo clippy -- -D warnings`
+# is deterministic across CI and local builds.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy"]

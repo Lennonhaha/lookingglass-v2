@@ -8,6 +8,7 @@
 /// 不透明谓词: 总是返回 true，但静态分析无法证明
 /// 实现: 利用 FNV-1a 哈希碰撞特性
 /// h(x) = x ^ C 对任意 x 都成立，但编译器无法化简
+#[allow(clippy::eq_op)]
 pub fn opaque_predicate_true() -> bool {
     // 形式上: h = (x ^ C) ^ x = C (常数)
     // 实际: 0x9E3779B97F4A7C15 ^ 0x9E3779B97F4A7C15 = 0 (false)

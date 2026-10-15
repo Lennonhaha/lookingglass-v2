@@ -80,7 +80,7 @@ impl DynamicPathSelector {
         for i in 0..n { tmp[i] = chunk[i] ^ off1[i]; }
         for i in 0..n { tmp[perm[i]] = tmp[i]; }
         for i in 0..n { tmp[i] ^= off2[i]; }
-        for i in 0..n { chunk[i] = tmp[i]; }
+        chunk.copy_from_slice(&tmp);
     }
 
     /// 线性层逆向: XOR off2 → inverse perm → XOR off1

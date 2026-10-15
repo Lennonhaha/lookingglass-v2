@@ -72,8 +72,8 @@ impl Keccak256 {
 
     fn theta(&mut self) {
         let mut c = [0u64; 5];
-        for x in 0..5 {
-            c[x] = self.state[x] ^ self.state[x+5] ^ self.state[x+10] 
+        for (x, cx) in c.iter_mut().enumerate() {
+            *cx = self.state[x] ^ self.state[x+5] ^ self.state[x+10]
                   ^ self.state[x+15] ^ self.state[x+20];
         }
         for x in 0..5 {
@@ -99,7 +99,7 @@ impl Keccak256 {
                 // π: (x,y) → (y, (2x+3y) mod 5)
                 //   new x' = y, new y' = (2x+3y)%5
                 //   state index = y' * 5 + x' = ((2x+3y)%5) * 5 + y
-                let new_y = ((2 * x + 3 * y) % 5) as usize;
+                let new_y = (2 * x + 3 * y) % 5;
                 self.state[new_y * 5 + y] = b[y * 5 + x].rotate_left(R[x][y]);
             }
         }

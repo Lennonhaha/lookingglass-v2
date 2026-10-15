@@ -39,6 +39,7 @@ impl SecureBuffer {
     }
 
     /// 长度
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -46,13 +47,9 @@ impl SecureBuffer {
     /// 运行时零化: 将数据覆写为零
     /// 在 drop 前手动调用，防止 GC 延迟导致数据残留
     pub fn zeroize(&mut self) {
-        for b in &mut self.data {
-            *b = 0;
-        }
+        self.data.fill(0);
         // 额外一轮覆写，防止优化掉
-        for b in &mut self.data {
-            *b = 0;
-        }
+        self.data.fill(0);
     }
 
     /// 从外部覆写为零 (用于非 SecureBuffer 类型的零化)

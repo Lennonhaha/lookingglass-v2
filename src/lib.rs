@@ -92,6 +92,7 @@ pub struct XorShift64(pub u64);
 
 impl XorShift64 {
     pub fn new(seed: u64) -> Self { Self(if seed == 0 { 1 } else { seed }) }
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13; x ^= x >> 7; x ^= x << 17; self.0 = x; x
@@ -135,15 +136,15 @@ fn confuse_chunk_depth(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds, depth: u
     let mut off2 = vec![0u8; n];
     for li in 0..layers {
         let mut rng = XorShift64::new(layer_seed(seed, li));
-        for i in 0..n { perm[i] = i; }
+        for (i, p) in perm.iter_mut().enumerate() { *p = i; }
         for i in (1..n).rev() {
             let j = (rng.next() % (i as u64 + 1)) as usize;
             perm.swap(i, j);
         }
         let mut rng1 = XorShift64::new(seeds.off1[li]);
         let mut rng2 = XorShift64::new(seeds.off2[li]);
-        for i in 0..n { off1[i] = rng1.next_u8(); }
-        for i in 0..n { off2[i] = rng2.next_u8(); }
+        for e in off1.iter_mut() { *e = rng1.next_u8(); }
+        for e in off2.iter_mut() { *e = rng2.next_u8(); }
         for i in 0..n { tmp[i] = chunk[i] ^ off1[i]; }
         // fused: permute + XOR-off2 + S-box in two passes
         for i in 0..n {
@@ -163,7 +164,7 @@ fn deconfuse_chunk_depth(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds, depth:
     for li in (0..layers).rev() {
         // fused: INV_SBOX + generate off1/off2 in parallel
         let mut rng = XorShift64::new(layer_seed(seed, li));
-        for i in 0..n { perm[i] = i; }
+        for (i, p) in perm.iter_mut().enumerate() { *p = i; }
         for i in (1..n).rev() {
             let j = (rng.next() % (i as u64 + 1)) as usize;
             perm.swap(i, j);
@@ -171,8 +172,8 @@ fn deconfuse_chunk_depth(chunk: &mut [u8], seed: u64, seeds: &LayerSeeds, depth:
         for i in 0..n { inv_perm[perm[i]] = i; }
         let mut rng1 = XorShift64::new(seeds.off1[li]);
         let mut rng2 = XorShift64::new(seeds.off2[li]);
-        for i in 0..n { off1[i] = rng1.next_u8(); }
-        for i in 0..n { off2[i] = rng2.next_u8(); }
+        for e in off1.iter_mut() { *e = rng1.next_u8(); }
+        for e in off2.iter_mut() { *e = rng2.next_u8(); }
         // fused: inv-S-box + xor-off2 + inv-permute + xor-off1
         for i in 0..n {
             let val = INV_SBOX[chunk[i] as usize] ^ off2[i];
