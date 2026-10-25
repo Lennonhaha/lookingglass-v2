@@ -72,6 +72,15 @@ Output: `pkg/lgv2_bg.wasm` + `pkg/lgv2.js`
 - **Constant-time** layer for alleviating timing side-channels.
 - **Secure zeroization** via `SecureBuffer` RAII wrapper.
 
+## Publications
+
+- **Methodology & Analysis** — *Deterministic but Wrong: Why Behavior-Based Tests Miss
+  Structural Errors in Keccak-f Implementations* (preprint, CC BY 4.0) —
+  [10.5281/zenodo.23637405](https://doi.org/10.5281/zenodo.23637405).
+  Case study of the three input-independent Keccak-f defects fixed in this repository at
+  commit [`053a67f`](https://github.com/Lennonhaha/lookingglass-v2/tree/053a67f08a7f8748da3c2d167eea017b156e19b0);
+  the record ships the paper source and a standalone reference model.
+
 ## License
 
 GPL-3.0-only © 2026 Liu Tianhe (Lennonhaha). See [LICENSE](./LICENSE).
